@@ -1,4 +1,4 @@
-use crate::datatype::{FollowCategory, FollowData, FollowError};
+use crate::datatype::{DataKeys, FollowCategory, FollowData, FollowError};
 use crate::interface::FollowOperations;
 use soroban_sdk::{symbol_short, Address, Env, Symbol, Vec};
 
@@ -49,14 +49,32 @@ impl<'a> FollowManager<'a> {
             return Err(FollowError::AlreadyFollowing);
         }
 
-        // Add new follower
-        followers.push_back(FollowData {
+        let follow_data = FollowData {
             user: user.clone(),
             product_id,
             categories: categories.clone(),
             timestamp: self.env.ledger().timestamp(),
             expires_at: None,
-        });
+        };
+
+        // Add new follower
+        followers.push_back(follow_data.clone());
+
+        // Update the follow list of a single user
+        let list_of_single_user_key = DataKeys::FollowList(user.clone());
+        let mut all_follow_list_of_single_user = self
+            .env
+            .storage()
+            .persistent()
+            .get::<DataKeys, Vec<FollowData>>(&list_of_single_user_key)
+            .unwrap_or(Vec::new(self.env));
+
+        all_follow_list_of_single_user.push_back(follow_data);
+
+        self.env
+            .storage()
+            .persistent()
+            .set(&list_of_single_user_key, &all_follow_list_of_single_user);
 
         // Store updated followers
         self.env.storage().persistent().set(&key, &followers);
