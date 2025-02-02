@@ -2,6 +2,7 @@ use crate::datatype::{
     DataKeys, EventLog, FollowCategory, FollowData, FollowError, NotificationPriority,
 };
 use crate::interface::AlertOperations;
+use crate::NotificationPreferences;
 use soroban_sdk::{Address, Env, Vec};
 
 pub struct AlertSystem;
@@ -18,6 +19,16 @@ impl AlertOperations for AlertSystem {
                 .persistent()
                 .get(&follow_key)
                 .unwrap_or_else(|| Vec::new(&env));
+
+            let prefs_key = DataKeys::AlertSettings(user_address.clone());
+            let user_prefs = env
+                .storage()
+                .persistent()
+                .get::<DataKeys, NotificationPreferences>(&prefs_key);
+
+            if user_prefs.is_none() || user_prefs.unwrap().mute_notifications {
+                return Ok(());
+            }
 
             // Check if user is following for price changes
             if let Some(_follow) = follows.iter().find(|f| {
@@ -133,7 +144,7 @@ impl AlertSystem {
     }
 
     // Rate limiting
-    fn check_rate_limit(env: &Env, user: &Address) -> bool {
+    fn check_rate_limit(env: &Env, user: &Address) -> (bool, u64) {
         let last_notification = env
             .storage()
             .persistent()
@@ -141,11 +152,12 @@ impl AlertSystem {
             .unwrap_or(0);
 
         let current_time = env.ledger().timestamp();
-        current_time - last_notification > 3600
+        (current_time - last_notification > 3600, last_notification)
     }
 
     fn log_event(env: &Env, user: Address, event: EventLog) -> Result<(), FollowError> {
-        if !Self::check_rate_limit(env, &user) {
+        let (boolean_value, u64_value) = Self::check_rate_limit(env, &user);
+        if !boolean_value && u64_value != 0 {
             return Ok(());
         }
 
