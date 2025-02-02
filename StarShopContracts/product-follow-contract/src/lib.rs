@@ -1,5 +1,8 @@
 #![no_std]
-use soroban_sdk::{contract, contracterror, contractimpl, symbol_short, Address, BytesN, Env, Vec};
+use datatype::{DataKeys, NotificationPriority};
+use soroban_sdk::{
+    contract, contracterror, contractimpl, symbol_short, vec, Address, BytesN, Env, Vec,
+};
 
 use crate::alerts::AlertSystem;
 use crate::datatype::Error;
@@ -133,6 +136,30 @@ impl ProductFollowContract {
             .publish((symbol_short!("adm_xfer"),), (current_admin, new_admin));
 
         Ok(())
+    }
+
+    pub fn register_user(env: Env, user: Address) {
+        let all_users_key = DataKeys::AllUsers;
+        let mut all_users: Vec<Address> = env
+            .storage()
+            .persistent()
+            .get(&all_users_key)
+            .unwrap_or_else(|| Vec::new(&env));
+
+        if !all_users.contains(&user) {
+            all_users.push_back(user.clone());
+
+            env.storage().persistent().set(&all_users_key, &all_users)
+        }
+
+        let preferences = NotificationPreferences {
+            user: user.clone(),
+            categories: vec![&env, FollowCategory::PriceChange],
+            mute_notifications: false,
+            priority: NotificationPriority::High,
+        };
+
+        let _ = Self::set_notification_preferences(env, user, preferences);
     }
 
     pub fn follow_product(
